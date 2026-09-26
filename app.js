@@ -514,6 +514,17 @@
     reader.readAsDataURL(file);
   }
 
+  // ---------- Своя клавиатура для письма ----------
+  // Клавиатура телефона подсказывает и исправляет слова (и печатает свайпом) — в диктанте это подсказка.
+  // Поэтому на сенсорных экранах буквы вводятся с кнопок приложения, системная клавиатура не открывается.
+  const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  const KBD_ROWS = ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбюё'];
+  function keyboardHtml() {
+    const row = (r) => `<div class="kbdrow">${[...r].map((c) => `<button type="button" class="key" data-act="key" data-k="${c}">${c}</button>`).join('')}</div>`;
+    return `<div class="kbd" aria-label="Клавиатура">${KBD_ROWS.map(row).join('')}
+      <div class="kbdrow"><button type="button" class="key wide" data-act="key" data-k="-">-</button><button type="button" class="key space" data-act="key" data-k=" ">пробел</button><button type="button" class="key wide" data-act="key" data-k="back" aria-label="Стереть">⌫</button></div></div>`;
+  }
+
   // ---------- Яндекс Метрика (только если в config.js указан номер счётчика) ----------
   // Цели: setup_kid / setup_adult (знакомство), words_pick (выбрали слова), tab_learn / tab_stories / tab_train / tab_me,
   // train_start / train_done, bolt_start / bolt_done, story_save, story_fixed, open_installed, install, share.
@@ -1420,6 +1431,10 @@
         <span class="label">Какие слова:</span>
         ${sets.map(([k, name, n]) => `<button class="chip" data-act="set" data-k="${k}" aria-pressed="${V.trainSet === k}" ${n ? '' : 'disabled'}>${name}</button>`).join('')}
       </div>
+      ${V.trainSet === 'selected' ? `<div class="row" style="gap:8px">
+        <span class="muted">Будем тренировать: ${selectedWords().slice(0, 12).map((w) => '<b>' + esc(w.id) + '</b>').join(', ')}${sel > 12 ? ' и ещё ' + (sel - 12) : ''}.</span>
+        ${sel < 5 ? `<button class="btn small" data-act="topUp">➕ Добавить до 10 слов</button>` : ''}
+        <button class="btn small ghost" data-act="tab" data-tab="words">Выбрать другие</button></div>` : ''}
       <div class="modes">
         ${Object.entries(MODES).map(([k, m]) => `<button class="mode" data-act="start" data-mode="${k}">
           <span class="e" aria-hidden="true">${m.e}</span><b>${m.name}</b><span class="muted">${m.about}</span></button>`).join('')}
@@ -1479,9 +1494,10 @@
         ${t.copy ? verdictBad(w, t.answer) : ''}
         ${!t.solved || t.copy ? `
         <form id="writeForm" class="row" style="justify-content:center;width:100%">
-          <input type="text" id="answer" class="answer" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="${t.copy ? 'Перепиши правильно' : 'Пиши здесь'}" aria-label="Ответ">
+          <input type="text" id="answer" class="answer" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" ${TOUCH ? 'inputmode="none"' : ''} placeholder="${t.copy ? 'Перепиши правильно' : 'Пиши здесь'}" aria-label="Ответ">
           <button class="btn" type="submit">${t.copy ? 'Готово' : 'Проверить'}</button>
-        </form>` : ''}`;
+        </form>
+        ${TOUCH ? keyboardHtml() : ''}` : ''}`;
     }
     const canNext = t.solved && !t.copy;
     const note = w.note ? `<p class="muted" style="margin:0">(${esc(w.note)})</p>` : '';
@@ -1577,6 +1593,22 @@
     const T = V.train;
     const keepY = window.scrollY;
     switch (act) {
+      case 'key': {
+        const inp = document.getElementById('answer');
+        if (!inp) return;
+        const k = el.dataset.k;
+        inp.value = k === 'back' ? inp.value.slice(0, -1) : inp.value + k;
+        return;
+      }
+      case 'topUp': {
+        const cur = selectedIds();
+        const have = new Set(cur);
+        const add = words().filter((w) => status(w.id) !== 'learned' && !have.has(w.id)).slice(0, Math.max(0, 10 - cur.length));
+        if (!add.length) { toast('Новых слов больше нет'); return; }
+        S.selected[S.grade] = cur.concat(add.map((w) => w.id)); save(); V.trainSet = 'selected'; goal('words_pick');
+        toast(`Добавлено ${add.length} ${plural(add.length, 'слово', 'слова', 'слов')}`);
+        break;
+      }
       case 'tab': V.draw = null; if (V.bolt) stopBolt(); V.tab = el.dataset.tab; goal('tab_' + V.tab); if (V.tab !== 'train' && T && T.done) V.train = null; window.scrollTo(0, 0); break;
       case 'toggle': {
         const ids = selectedIds();
