@@ -311,6 +311,8 @@ img.thumb { width: 28px; height: 28px; border-radius: 7px; object-fit: cover; bo
 .xc.sel { background: #dbe6ff; }
 .xc.cur { background: #ffe38a; box-shadow: 0 0 0 3px var(--pen); z-index: 1; }
 .xc.bad { color: #d7322b; background: #fde9e7; }
+.xc.oops { animation: oops .45s ease; }
+@keyframes oops { 0%, 100% { transform: none; background: #fde9e7; } 20% { transform: translateX(-4px); background: #ff8b84; } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 .xc.win { background: #e3f5ea; color: #22844d; }
 .xwclue { display: flex; align-items: center; gap: 6px; width: 100%; background: var(--pencil-soft); border: 2px solid var(--pencil); border-radius: 14px; padding: 6px; font-size: 16px; line-height: 1.25; min-height: 64px; }
 .xwcard { gap: 8px !important; padding-top: 10px !important; }

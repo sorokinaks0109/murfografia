@@ -1443,7 +1443,7 @@
     const starts = [...new Set(ws.map((e) => e.y * 100 + e.x))].sort((a, b) => a - b);
     ws.forEach((e) => { e.num = starts.indexOf(e.y * 100 + e.x) + 1; });
     const order = ws.map((e, i) => i).sort((a, b) => (ws[a].dir === ws[b].dir ? ws[a].num - ws[b].num : ws[a].dir === 'h' ? -1 : 1));
-    V.xw = { lay, ws, W, H, order, fill: {}, bad: {}, sel: order[0], pos: 0, checks: 0, done: false, recorded: false, t0: Date.now(), duel: duel || null };
+    V.xw = { lay, ws, W, H, order, fill: {}, bad: {}, sel: order[0], pos: 0, checks: 0, errs: 0, missed: new Set(), done: false, recorded: false, t0: Date.now(), duel: duel || null };
     goal('grid_start');
     render();
     xwScroll();
@@ -1468,6 +1468,16 @@
     } else if (k === 'enter') { xwCheck(); return; }
     else if (/^[а-яё]$/.test(k)) {
       const key = ck(...cellOf(e, X.pos));
+      // Неверная буква не встаёт: клетка вспыхивает красным, телефон вздрагивает, +1 ошибка (+5 с к итогу).
+      if (norm(k) !== norm(e.w.id[X.pos])) {
+        X.errs = (X.errs || 0) + 1; X.missed.add(e.w.id);
+        try { navigator.vibrate && navigator.vibrate([70, 40, 70]); } catch (err) { /* нет вибрации */ }
+        const el = document.querySelector(`.xc[data-x="${cellOf(e, X.pos)[0]}"][data-y="${cellOf(e, X.pos)[1]}"]`);
+        if (el) { el.classList.remove('oops'); void el.offsetWidth; el.classList.add('oops'); }
+        const n = document.getElementById('xwErrs');
+        if (n) n.textContent = X.errs;
+        return;
+      }
       X.fill[key] = k; delete X.bad[key];
       if (X.ws.every(xwWordFull)) { render(); xwCheck(); return; }
       if (X.pos < e.len - 1) X.pos++;
@@ -1502,16 +1512,19 @@
     X.ws.forEach((e) => {
       const val = [...Array(e.len)].map((_, i) => X.fill[ck(...cellOf(e, i))]).join('');
       const ok = norm(val) === norm(e.w.id);
-      if (!X.recorded) record(e.w.id, ok);
+      if (!X.recorded) record(e.w.id, ok && !X.missed.has(e.w.id));
       if (!ok) { wrong++; [...Array(e.len)].forEach((_, i) => { const k = ck(...cellOf(e, i)); if (norm(X.fill[k]) !== norm(e.w.id[i])) X.bad[k] = true; }); }
     });
     X.recorded = true;
     if (wrong) { react(false); toast(`Ошибки в ${wrong} ${plural(wrong, 'слове', 'словах', 'словах')} — красные клетки. Исправь и проверь снова`); render(); return; }
     X.done = true; X.sec = Math.round((Date.now() - X.t0) / 1000);
     addStars(X.ws.length * 2); cnt('grids'); goal('grid_done', { sec: X.sec });
-    if (X.duel && (X.sec < X.duel.t || (X.sec === X.duel.t && X.checks <= X.duel.e))) cnt('duelWins');
+    if (X.duel && xwScore(X.sec, X.errs) < xwScore(X.duel.t, X.duel.e)) cnt('duelWins');
     save(); render(); confetti(); react(true);
   }
+  // Итог для сравнения: время + 5 секунд за каждую неверную букву.
+  const xwScore = (sec, errs) => sec + 5 * (errs || 0);
+  const xwErrTxt = (e) => (e ? `${e} ${plural(e, 'ошибка', 'ошибки', 'ошибок')} (+${5 * e} с)` : 'без ошибок');
   function xwGiveUp() {
     const X = V.xw;
     X.ws.forEach((e) => [...Array(e.len)].forEach((_, i) => { X.fill[ck(...cellOf(e, i))] = e.w.id[i].toLowerCase(); }));
@@ -1535,21 +1548,22 @@
     }
     const clue = (q, i) => `<button class="xwli${i === X.sel && !X.done ? ' on' : ''}" data-act="xwPick" data-i="${i}"><b>${q.num}</b> ${esc(defOf(q.w))} <small>(${q.len})</small></button>`;
     const across = X.order.filter((i) => X.ws[i].dir === 'h'), down = X.order.filter((i) => X.ws[i].dir === 'v');
-    const top = `<div class="row between"><span class="label">🔠 Кроссворд${X.duel ? ` · вызов от ${esc(X.duel.n || 'друга')}` : ''}</span>
+    const top = `<div class="row between"><span class="label">🔠 Кроссворд${X.duel ? ` · вызов от ${esc(X.duel.n || 'друга')}` : ''}${X.done ? '' : ` · ошибок: <b id="xwErrs">${X.errs || 0}</b>`}</span>
       <button class="btn small ghost" data-act="stopXw">Стоп</button></div>`;
     const board = `<div class="xw" style="--w:${X.W};--h:${X.H}">${grid}</div>`;
     if (X.done) {
       const d = X.duel;
       let duelHtml = '';
       if (d && !X.gaveUp) {
-        const win = X.sec < d.t || (X.sec === d.t && X.checks <= d.e);
-        duelHtml = `<p class="lead">Ты: <b>${fmtTime(X.sec)}</b>${X.checks > 1 ? `, проверок: ${X.checks}` : ''} · ${esc(d.n || 'Друг')}: <b>${fmtTime(d.t)}</b>${d.e > 1 ? `, проверок: ${d.e}` : ''}</p>
+        const my = xwScore(X.sec, X.errs), their = xwScore(d.t, d.e);
+        const win = my < their;
+        duelHtml = `<p class="lead">Ты: <b>${fmtTime(my)}</b> (${fmtTime(X.sec)}, ${xwErrTxt(X.errs)}) · ${esc(d.n || 'Друг')}: <b>${fmtTime(their)}</b> (${fmtTime(d.t)}, ${xwErrTxt(d.e)})</p>
           <h2>${win ? '⚔️ Ты ' + g('победил', 'победила') + '!' : `${esc(d.n || 'Друг')} пока быстрее. Реванш?`}</h2>`;
       }
       return `${top}<article class="panel card">
         ${board}
         ${X.gaveUp ? '<h2>Вот ответы</h2><p class="lead">Ничего страшного — попробуй новый кроссворд.</p>'
-          : `<div class="result">🔠 ${fmtTime(X.sec)}</div>${duelHtml || `<h2>Кроссворд ${g('решён', 'решён')}!</h2><p class="lead">Время: <b>${fmtTime(X.sec)}</b>${X.checks > 1 ? `, проверок: ${X.checks}` : ', с первой проверки'}. +${X.ws.length * 2} ⭐</p>`}`}
+          : `<div class="result">🔠 ${fmtTime(xwScore(X.sec, X.errs))}</div>${duelHtml || `<h2>Кроссворд решён!</h2><p class="lead">Время: <b>${fmtTime(X.sec)}</b>, ${xwErrTxt(X.errs)}${X.errs ? ` — итог <b>${fmtTime(xwScore(X.sec, X.errs))}</b>` : ''}. +${X.ws.length * 2} ⭐</p>`}`}
         <div class="row" style="justify-content:center">
           ${X.gaveUp ? '' : `<button class="btn" data-act="duelSend" data-m="xw">⚔️ ${d ? 'Ответить вызовом' : 'Бросить вызов другу'}</button>`}
           <button class="btn ${X.gaveUp ? '' : 'ghost'}" data-act="start" data-mode="grid">Новый кроссворд</button>
@@ -1563,7 +1577,7 @@
           <div><span class="label">${e.num} ${e.dir === 'h' ? 'по горизонтали' : 'по вертикали'} · ${e.len} ${plural(e.len, 'буква', 'буквы', 'букв')}</span>${esc(defOf(e.w))}</div>
           <button class="btn small ghost" data-act="xwStep" data-d="1" aria-label="Следующее слово">▶</button></div>
         ${keyboardHtml(true)}
-        <div class="row" style="justify-content:center"><button class="btn" data-act="xwCheck">Проверить</button><button class="btn small ghost" data-act="xwGiveUp">Показать ответы</button></div>
+        <div class="row" style="justify-content:center"><button class="btn small ghost" data-act="xwGiveUp">Показать ответы</button></div>
       </article>
       <section class="panel xwlist">
         ${across.length ? `<span class="label">По горизонтали</span>${across.map((i) => clue(X.ws[i], i)).join('')}` : ''}
@@ -1579,8 +1593,8 @@
     const who = S.name || 'Друг';
     if (m === 'xw') {
       const X = V.xw;
-      d = { v: 1, m: 'xw', n: S.name || '', f: S.gender === 'f' ? 1 : 0, t: X.sec, e: X.checks, L: X.lay };
-      text = `⚔️ ${who} ${g('решил', 'решила')} кроссворд в приложении «${CFG.appName}» за ${fmtTime(X.sec)}. Сможешь быстрее?`;
+      d = { v: 2, m: 'xw', n: S.name || '', f: S.gender === 'f' ? 1 : 0, t: X.sec, e: X.errs || 0, L: X.lay };
+      text = `⚔️ ${who} ${g('решил', 'решила')} кроссворд в приложении «${CFG.appName}» за ${fmtTime(X.sec)}, ${xwErrTxt(X.errs)}. Сможешь лучше?`;
     } else {
       const C = V.cw;
       d = { v: 1, m: 'cw', n: S.name || '', f: S.gender === 'f' ? 1 : 0, s: C.score, q: C.seq.slice(0, Math.max(C.score + 15, 30)) };
@@ -1606,7 +1620,7 @@
       <div class="result">⚔️</div>
       <h2>${name} ${d.f ? 'бросила' : 'бросил'} тебе вызов!</h2>
       <p class="lead">${d.m === 'xw'
-        ? `${name} ${did} кроссворд за <b>${fmtTime(d.t)}</b>. Тот же кроссворд ждёт тебя — сможешь быстрее?`
+        ? `${name} ${did} кроссворд за <b>${fmtTime(d.t)}</b>, ${xwErrTxt(d.e)}. Тот же кроссворд ждёт тебя — сможешь лучше? За каждую неверную букву +5 секунд.`
         : `${name} ${got} в «Эрудите» <b>${d.s}</b> ${plural(d.s, 'слово', 'слова', 'слов')} подряд. Тебе достанутся те же слова — побьёшь?`}</p>
       <div class="row" style="justify-content:center">
         <button class="btn" data-act="duelAccept">Принять вызов</button>
