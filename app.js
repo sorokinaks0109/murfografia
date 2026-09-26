@@ -121,6 +121,8 @@
     if (S.grade === 'all') return gen ? 'всех классов' : 'все классы';
     return S.grade + (gen ? ' класса' : ' класс');
   }
+  const DEFS = window.SLOVARIK_DEFS || {};
+  const defOf = (w) => DEFS[w.id] || '';
   function byId(id) { return words().find((w) => w.id === id); }
   function selectedIds() {
     const all = new Set(words().map((w) => w.id));
@@ -854,6 +856,7 @@
           <button class="btn small ghost" data-act="report" data-id="${esc(w.id)}">⚠️ Ошибка?</button>
         </div>
         <div class="muted">Скажи по слогам так, как пишется:<br><b style="font-size:24px;color:var(--ink)">${syllables(w)}</b></div>
+        ${defOf(w) ? `<div class="hint"><span class="label">Что значит</span>${esc(defOf(w))}</div>` : ''}
         ${w.hint ? `<div class="hint"><span class="label">Подсказка</span>${esc(w.hint)}</div>` : ''}
         ${groups.map((g) => g.tip ? `<div class="hint"><span class="label">${esc(g.title)}</span>${esc(g.tip)}</div>` : '').join('')}
         <label class="mine" for="mine">
@@ -1583,6 +1586,7 @@
         ${T.mode === 'write' ? (speakable
           ? `<button class="speak" data-act="say" data-text="${esc(w.id)}" aria-label="Послушать слово">🔊</button><p class="muted">Нажми, чтобы послушать ещё раз</p>`
           : `<div class="gapword" style="font-size:32px">${masked}</div><p class="muted">Напиши слово целиком, вставив пропущенные буквы</p>`) : `<p class="muted">Какое слово ты ${g('видел', 'видела')}? Напиши его.</p>`}
+        ${T.mode === 'write' && defOf(w) && !t.solved ? (t.showDef ? defBox(w) : '<button class="btn small ghost" data-act="showDef">❓ Что это за слово?</button>') : ''}
         ${t.solved && !t.copy ? verdictGood(w, t.caseNote) : ''}
         ${t.copy ? verdictBad(w, t.answer) : ''}
         ${!t.solved || t.copy ? `
@@ -1598,6 +1602,8 @@
       <article class="panel card">${inner.replace('</div>', '</div>' + note)}</article>
       ${canNext ? '<div class="row" style="justify-content:center"><button class="btn nextbtn" data-act="next" id="nextBtn">Дальше →<span class="nextbar" id="nextBar"></span></button></div>' : ''}`;
   }
+
+  const defBox = (w) => `<div class="hint defbox"><span class="label">Что это за слово</span>${esc(defOf(w))}</div>`;
 
   function verdictGood(w, note) {
     const praise = ['Верно!', 'Молодец!', 'Точно!', 'Супер!', 'Так держать!'][Math.floor(Math.random() * 5)];
@@ -1740,6 +1746,15 @@
       case 'reportClose': V.report = null; break;
       case 'reportCopy': copyText(document.getElementById('reportText').value); return;
       case 'reviewDue': V.trainSet = 'due'; V.tab = 'train'; V.train = null; window.scrollTo(0, 0); break;
+      case 'showDef': {
+        // Без перерисовки, чтобы не стереть уже набранные буквы.
+        const t = V.train && V.train.task;
+        if (!t) return;
+        t.showDef = true;
+        el.insertAdjacentHTML('afterend', defBox(t.w));
+        el.remove();
+        return;
+      }
       case 'fixMistakes': V.trainSet = 'mistakes'; V.tab = 'train'; V.train = null; window.scrollTo(0, 0); break;
       case 'clearSel': S.selected[S.grade] = []; save(); break;
       case 'selAll':

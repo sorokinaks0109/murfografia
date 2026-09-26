@@ -169,7 +169,7 @@ textarea { min-height: 80px; resize: vertical; font-family: var(--hand); font-si
 .dots button[aria-current="true"] { background: var(--pen); }
 
 /* Истории */
-.story { font-family: var(--hand); font-size: 23px; line-height: 1.5; margin: 0; }
+.story { font-family: var(--hand); font-size: 23px; line-height: 1.5; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { border: 2px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--paper-2); font-weight: 700; font-size: 16px; }
 .chip.on { border-color: var(--green); background: var(--green-soft); }
@@ -372,9 +372,10 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ownreact button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--red); color: #fff; font-size: 12px; line-height: 22px; padding: 0; }
 
 @media (prefers-reduced-motion: reduce) { *:not(.splash) { animation: none !important; transition: none !important; } }
-.word > span:nth-child(2) { min-width: 0; overflow-wrap: break-word; hyphens: auto; }
+.word > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+.word { min-width: 0; }
 @media (max-width: 420px) {
-  .words { grid-template-columns: repeat(2, 1fr); }
+  .words { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .word { font-size: 15px; padding: 8px; gap: 6px; }
   .word .e { font-size: 19px; }
   .grades { gap: 4px; }
@@ -390,6 +391,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 <noscript>Для словарика нужно включить JavaScript.</noscript>
 <script src="config.js"></script>
 <script src="words.js"></script>
+<script src="defs.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
