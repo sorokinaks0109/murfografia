@@ -193,6 +193,8 @@
 
   // ---------- Помощники ----------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Варианты буквы всегда в одном порядке (по алфавиту): кнопки не прыгают между пропусками.
+  const stableAlts = (alts) => alts.slice().sort((a, b) => a.localeCompare(b, 'ru'));
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const norm = (s) => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[\s ]+/g, ' ').trim();
@@ -1316,7 +1318,7 @@
       task.gaps = w.parts.map((p, i) => (p.t ? i : -1)).filter((i) => i >= 0);
       task.gi = 0;
       task.orders = {};
-      task.gaps.forEach((i) => { task.orders[i] = shuffle(w.parts[i].alts); });
+      task.gaps.forEach((i) => { task.orders[i] = stableAlts(w.parts[i].alts); });
       task.filled = {};
       task.bad = {};
     } else if (T.mode === 'choose') {
@@ -1645,7 +1647,7 @@
         const st = V.story[el.dataset.k];
         const parts = parseMarked(st.text);
         const orders = {};
-        parts.forEach((p, i) => { if (p.t) orders[i] = shuffle(p.alts); });
+        parts.forEach((p, i) => { if (p.t) orders[i] = stableAlts(p.alts); });
         st.fix = { answers: {}, orders, checked: false };
         break;
       }
