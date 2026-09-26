@@ -2499,6 +2499,26 @@
   render();
 
   // ---------- Заставка при открытии: оранжевый экран, кот и название ----------
+  // ---------- Переезд на murfografia.ru ----------
+  // Старый адрес (…github.io/5-/slovarik/) и http-версия нового продолжают работать как обычно.
+  // Как только https://murfografia.ru отвечает с защищённым соединением, приложение само переводит
+  // туда — в первый раз вместе с прогрессом (#import=…), дальше просто открывает новый адрес.
+  (function moveToNewHome() {
+    const NEW = 'https://murfografia.ru/';
+    const old = /github\.io$/.test(location.hostname) || (location.hostname === 'murfografia.ru' && location.protocol === 'http:');
+    if (!old) return;
+    fetch(NEW + 'manifest.webmanifest', { mode: 'no-cors', cache: 'no-store' }).then(() => {
+      let url = NEW;
+      try {
+        const data = localStorage.getItem(KEY);
+        if (data && !localStorage.getItem('slovarik:moved2')) url += '#import=' + btoa(unescape(encodeURIComponent(data))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        localStorage.setItem('slovarik:moved2', '1');
+      } catch (e) { /* без хранилища — просто переходим */ }
+      toast('🐱 Мурфография переехала на murfografia.ru — переносим твой прогресс…');
+      setTimeout(() => location.replace(url), 1800);
+    }).catch(() => { /* у нового адреса ещё нет защищённого соединения — остаёмся здесь */ });
+  })();
+
   (function splash() {
     // Заставка уже нарисована в index.html, чтобы появиться мгновенно. Здесь только прячем её.
     const el = document.getElementById('splash');
