@@ -513,8 +513,10 @@
   }
 
   // ---------- Яндекс Метрика (только если в config.js указан номер счётчика) ----------
-  function goal(name) {
-    try { if (CFG.metrikaId && window.ym) window.ym(+CFG.metrikaId, 'reachGoal', name); } catch (e) { /* ничего */ }
+  // Цели: setup_kid / setup_adult (знакомство), words_pick (выбрали слова), tab_learn / tab_stories / tab_train / tab_me,
+  // train_start / train_done, bolt_start / bolt_done, story_save, story_fixed, open_installed, install, share.
+  function goal(name, params) {
+    try { if (CFG.metrikaId && window.ym) window.ym(+CFG.metrikaId, 'reachGoal', name, params); } catch (e) { /* ничего */ }
   }
   if (/^\d+$/.test(String(CFG.metrikaId))) {
     try {
@@ -530,6 +532,7 @@
   // ---------- Установка на телефон ----------
   let installEvt = null;
   const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  if (isStandalone()) goal('open_installed');
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (V.tab === 'me') render(); });
   if ('serviceWorker' in navigator && location.protocol === 'https:' && /github\.io$|\.ru$|\.рф$|\.com$/.test(location.hostname)) {
@@ -1213,6 +1216,7 @@
   // ---------- «Молния»: игра на время ----------
   let boltTimer = 0;
   function startBolt() {
+    goal('bolt_start');
     const pool = trainPool().filter((w) => wrongVariants(w).length);
     if (!pool.length) { toast('Нет слов для игры'); return; }
     clearInterval(boltTimer);
@@ -1238,7 +1242,7 @@
     if (bar) bar.style.width = (left / 600) + '%';
     if (left <= 0) {
       clearInterval(boltTimer);
-      B.done = true;
+      B.done = true; goal('bolt_done');
       const best = S.best[S.grade] || 0;
       if (B.score > best) { S.best[S.grade] = B.score; B.record = best > 0 || B.score > 0; }
       save();
@@ -1294,6 +1298,7 @@
     const list = shuffle(pool || trainPool()).slice(0, 15);
     if (!list.length) { toast('Нет слов для тренировки'); return; }
     V.combo = 0;
+    goal('train_start', { mode });
     V.train = { mode, queue: list.map((w) => w.id), total: list.length, pos: 0, firstTry: 0, mistakes: [], repeated: new Set(), task: null };
     nextTask();
   }
@@ -1301,7 +1306,7 @@
   function nextTask() {
     const T = V.train;
     if (T.pos >= T.queue.length) {
-      T.task = null; T.done = true; render();
+      T.task = null; T.done = true; goal('train_done', { mode: T.mode }); render();
       if (T.total && T.firstTry / T.total >= 0.9) confetti();
       return;
     }
@@ -1570,12 +1575,12 @@
     const T = V.train;
     const keepY = window.scrollY;
     switch (act) {
-      case 'tab': V.draw = null; if (V.bolt) stopBolt(); V.tab = el.dataset.tab; if (V.tab !== 'train' && T && T.done) V.train = null; window.scrollTo(0, 0); break;
+      case 'tab': V.draw = null; if (V.bolt) stopBolt(); V.tab = el.dataset.tab; goal('tab_' + V.tab); if (V.tab !== 'train' && T && T.done) V.train = null; window.scrollTo(0, 0); break;
       case 'toggle': {
         const ids = selectedIds();
         const id = el.dataset.id;
         const i = ids.indexOf(id);
-        if (i >= 0) ids.splice(i, 1); else ids.push(id);
+        if (i >= 0) ids.splice(i, 1); else { ids.push(id); goal('words_pick'); }
         S.selected[S.grade] = ids; save();
         if (i < 0 && ids.length === 11) toast('Больше 10 слов за раз — трудновато. Но можно!');
         break;
@@ -1585,7 +1590,7 @@
         const fresh = words().filter((w) => status(w.id) !== 'learned' && !cur.has(w.id));
         const take = fresh.slice(0, 10);
         if (!take.length) { toast(S.grade === 'all' ? 'Все слова уже выучены!' : 'Все слова этого класса уже выучены!'); return; }
-        S.selected[S.grade] = take.map((w) => w.id); save(); V.learn = 0;
+        S.selected[S.grade] = take.map((w) => w.id); save(); V.learn = 0; goal('words_pick');
         toast(`Выбрано ${take.length} ${plural(take.length, 'слово', 'слова', 'слов')}`);
         break;
       }
@@ -1661,7 +1666,7 @@
         st.fix.checked = true;
         const bad = gaps.filter(([p, i]) => st.fix.answers[i] !== p.s).length;
         if (!bad) {
-          st.fix = null; addStars(3); render(); confetti(); react(true); toast('История починена! +3 ⭐'); return;
+          st.fix = null; addStars(3); goal('story_fixed'); render(); confetti(); react(true); toast('История починена! +3 ⭐'); return;
         }
         toast(`Ошибок: ${bad}. Красные пропуски — нажми на них ещё раз`);
         break;
@@ -1669,14 +1674,14 @@
       case 'fixStop': V.story[el.dataset.k].fix = null; break;
       case 'saveGen': {
         const st = V.story[el.dataset.k];
-        S.stories.unshift({ g: S.grade, text: st.text, t: Date.now(), gen: true }); save();
+        S.stories.unshift({ g: S.grade, text: st.text, t: Date.now(), gen: true }); save(); goal('story_save');
         toast('История сохранена');
         break;
       }
       case 'saveStory': {
         const text = V.draft.trim();
         if (!text) { toast('Сначала напиши историю'); return; }
-        S.stories.unshift({ g: S.grade, text, t: Date.now() }); save();
+        S.stories.unshift({ g: S.grade, text, t: Date.now() }); save(); goal('story_save');
         V.draft = ''; toast('История сохранена');
         break;
       }
@@ -1737,6 +1742,7 @@
       if (String(S.grade) !== gr) { stopBolt(); V.learn = 0; V.train = null; V.story = {}; V.excl = {}; V.draw = null; }
       S.name = document.getElementById('nameInput').value.trim().slice(0, 20);
       S.gender = gen; S.grade = gr; S.setup = true;
+      if (first) goal(who === 'adult' ? 'setup_adult' : 'setup_kid', { grade: gr });
       save(); V.editName = false; V.hWho = V.hGender = V.hGrade = V.hName = undefined; V.tab = 'words'; render(); window.scrollTo(0, 0);
       react(true, first ? (S.name ? 'ПРИВЕТ, {n}! ДАВАЙ УЧИТЬ СЛОВА' : 'ПРИВЕТ! ДАВАЙ УЧИТЬ СЛОВА') : 'ГОТОВО! ВПЕРЁД К ЗНАНИЯМ');
       return;
