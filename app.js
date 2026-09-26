@@ -108,7 +108,17 @@
   const GRADES = Object.keys(BUILTIN).sort((a, b) => a - b);
 
   // 'all' — режим для взрослых: все слова с 1 по 8 класс одним списком.
+  // Кэш: список класса пересобирается только когда меняются свои слова этого класса.
+  const WCACHE = new Map();
   function gradeWords(g) {
+    const ckey = (S.custom[g] || []).join('\n');
+    const hit = WCACHE.get(String(g));
+    if (hit && hit.ckey === ckey) return hit.list;
+    const list = buildGradeWords(g);
+    WCACHE.set(String(g), { ckey, list, byId: new Map(list.map((w) => [w.id, w])) });
+    return list;
+  }
+  function buildGradeWords(g) {
     const custom = (S.custom[g] || []).map(parseLine);
     const base = g === 'all' ? GRADES.flatMap((k) => BUILTIN[k]) : BUILTIN[g] || [];
     const all = base.concat(custom);
@@ -124,7 +134,7 @@
   }
   const DEFS = window.SLOVARIK_DEFS || {};
   const defOf = (w) => DEFS[w.id] || '';
-  function byId(id) { return words().find((w) => w.id === id); }
+  function byId(id) { words(); return WCACHE.get(String(S.grade)).byId.get(id); }
   function selectedIds() {
     const all = new Set(words().map((w) => w.id));
     return (S.selected[S.grade] || []).filter((id) => all.has(id));
@@ -802,6 +812,7 @@
         <button class="btn ghost" data-act="selAll" ${sel.size === ws.length ? 'disabled' : ''}>Выбрать все</button>
         <button class="btn ghost" data-act="clearSel" ${sel.size ? '' : 'disabled'}>Снять выбор</button>
         <button class="btn ghost" data-act="tab" data-tab="learn" ${sel.size ? '' : 'disabled'}>Учить выбранные →</button>
+        <button class="btn ghost" data-act="toTrain" ${sel.size ? '' : 'disabled'}>Тренировать выбранные ✍️</button>
       </div>
       <div class="legend">
         <span><i style="background:var(--line)"></i>новое</span>
@@ -874,14 +885,16 @@
           <textarea id="mine" data-id="${esc(w.id)}" placeholder="Например: корова в огромных круглых очках — О-О">${esc(S.mine[w.id] || '')}</textarea>
         </label>
       </article>
-      <div class="dots">${list.map((x, i) => `<button data-act="learnGo" data-i="${i}" aria-label="${esc(x.id)}" aria-current="${i === V.learn}"></button>`).join('')}</div>
+      ${list.length <= 30 ? `<div class="dots">${list.map((x, i) => `<button data-act="learnGo" data-i="${i}" aria-label="${esc(x.id)}" aria-current="${i === V.learn}"></button>`).join('')}</div>` : ''}
       <div class="row between">
         <button class="btn ghost" data-act="learnPrev" ${V.learn ? '' : 'disabled'}>← Назад</button>
         <span class="muted">${V.learn + 1} из ${list.length}</span>
         ${V.learn < list.length - 1
           ? '<button class="btn" data-act="learnNext">Дальше →</button>'
           : '<button class="btn" data-act="tab" data-tab="train">Проверить себя ✍️</button>'}
-      </div>`;
+      </div>
+      ${V.learn < list.length - 1 ? `<div class="row" style="justify-content:center">
+        <button class="btn ghost" data-act="toTrain">Я уже знаю эти слова — к тренировке ✍️</button></div>` : ''}`;
   }
 
   // ---------- Вкладка «Прогресс» (для ребёнка и родителей) ----------
@@ -1971,8 +1984,9 @@
     const sel = selectedWords().length;
     const mist = words().filter((w) => hasMistake(w.id)).length;
     const due = words().filter((w) => status(w.id) === 'due').length;
-    if (V.trainSet === 'selected' && !sel) V.trainSet = due ? 'due' : mist ? 'mistakes' : 'all';
-    if (V.trainSet === 'due' && !due) V.trainSet = sel ? 'selected' : 'all';
+    // Если выбранный набор пуст (например, все ошибки уже исправлены) — берём первый непустой.
+    const cnts = { due, selected: sel, mistakes: mist, all: words().length };
+    if (!cnts[V.trainSet]) V.trainSet = ['selected', 'due', 'mistakes', 'all'].find((k) => cnts[k]) || 'all';
     const sets = [
       ['due', `🔁 Пора повторить (${due})`, due],
       ['selected', `Выбранные (${sel})`, sel],
@@ -2225,6 +2239,7 @@
         el.remove();
         return;
       }
+      case 'toTrain': V.trainSet = 'selected'; V.tab = 'train'; V.train = null; V.cw = null; V.xw = null; stopBolt(); window.scrollTo(0, 0); break;
       case 'fixMistakes': V.trainSet = 'mistakes'; V.tab = 'train'; V.train = null; window.scrollTo(0, 0); break;
       case 'clearSel': S.selected[S.grade] = []; save(); break;
       case 'selAll':
